@@ -1,0 +1,5 @@
+# B站视频下载处理工具依赖清单
+# 安装方式：pip install -r requirements.txt
+yt-dlp>=2025.1.1          # 下载 B 站视频（支持短链/分P）
+imageio-ffmpeg>=0.5.0     # 自带 ffmpeg 二进制，无需手动安装 ffmpeg
+gradio>=5.0.0             # 网页界面（浏览器中操作，对小白友好）
