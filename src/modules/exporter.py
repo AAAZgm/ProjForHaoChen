@@ -4,7 +4,7 @@
 ================================
 职责：
   1. concat_videos()：把多个"标准化中间视频"拼接为一个完整视频
-     （使用 concat 滤镜重新编码，参数统一，拼接不会花屏/音画不同步）
+     （管线标准片段复制视频流拼接；其他调用使用 concat 滤镜重新编码）
   2. export_mp4()：导出为 mp4（H.264 + AAC，兼容几乎所有播放器）
   3. export_gif()：导出为 gif（使用调色板优化，画质好、体积小）
 
@@ -14,6 +14,8 @@
 """
 
 import os
+from pathlib import Path
+import tempfile
 from typing import List, Optional
 
 from . import ffmpeg_util
@@ -27,11 +29,12 @@ def concat_videos(
     video_files: List[str],
     out_path: str,
     on_progress: ProgressCallback = None,
+    crf: int = 20,
+    normalized: bool = False,
 ) -> str:
-    """把多个视频拼接为一个视频（全部重新编码，保证一致性）。
+    """拼接视频；normalized 仅供同次管线产生的标准片段使用。
 
-    实现：concat 滤镜。所有输入已由 editor 标准化为相同分辨率/帧率/编码，
-    因此拼接结果稳定。
+    标准片段保留已编码视频，音频对齐后重编码；外部调用默认用 concat 滤镜。
     """
     if not video_files:
         raise RuntimeError("没有可拼接的片段（可能全部被删除了）")
@@ -41,6 +44,26 @@ def concat_videos(
         # 注意：仍需重新封装 mp4，保证导出参数一致
         args = ["-i", video_files[0], "-c", "copy", "-movflags", "+faststart", str(out_path)]
         ffmpeg_util.run_ffmpeg(args, total_duration=0, on_progress=on_progress, extra_message="拼接中")
+        return out_path
+
+    if normalized:
+        # Only our own normalized H.264/stereo AAC segments use this fast path.
+        # External callers retain the general concat-filter implementation below.
+        with tempfile.TemporaryDirectory(prefix="concat_", dir=Path(out_path).resolve().parent) as work:
+            manifest = Path(work) / "segments.ffconcat"
+            lines, total = ["ffconcat version 1.0"], 0.0
+            for file in video_files:
+                duration = ffmpeg_util.get_video_info(file)["duration"]
+                total += duration
+                escaped = Path(file).resolve().as_posix().replace("'", "'\\''")
+                lines.extend([f"file '{escaped}'", f"duration {duration:.9f}"])
+            manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            # Video is already encoded once. Audio is re-timed/re-encoded to
+            # avoid accumulating AAC frame padding across many cuts.
+            args = ["-f", "concat", "-safe", "0", "-i", str(manifest), "-map", "0:v:0", "-map", "0:a:0",
+                    "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-af", f"aresample=async=1:first_pts=0,apad,atrim=duration={total:.9f}",
+                    "-movflags", "+faststart", str(out_path)]
+            ffmpeg_util.run_ffmpeg(args, total_duration=total, on_progress=on_progress, extra_message="合并片段（保留已编码画面）")
         return out_path
 
     # 多个片段：构造 concat 滤镜
@@ -65,13 +88,14 @@ def concat_videos(
         concat_fm += f"concat=n={n}:v=1:a=0[v]"
         args += ["-filter_complex", concat_fm, "-map", "[v]"]
 
-    args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+    args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
              "-pix_fmt", "yuv420p"]
     if has_audio:
         args += ["-c:a", "aac", "-b:a", "128k"]
     args += ["-movflags", "+faststart", str(out_path)]
 
-    ffmpeg_util.run_ffmpeg(args, total_duration=0, on_progress=on_progress, extra_message="拼接中")
+    total = sum(ffmpeg_util.get_video_info(f)["duration"] for f in video_files)
+    ffmpeg_util.run_ffmpeg(args, total_duration=total, on_progress=on_progress, extra_message="拼接中")
     return out_path
 
 
@@ -82,13 +106,15 @@ def export_mp4(
     video_files: List[str],
     out_path: str,
     on_progress: ProgressCallback = None,
+    crf: int = 20,
+    normalized: bool = False,
 ) -> str:
     """导出为 mp4：先拼接，再重新封装为 mp4。
 
     如果输入只有一个文件，concat_videos 内部会直接复制，不重复转码。
     """
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-    return concat_videos(video_files, out_path, on_progress)
+    return concat_videos(video_files, out_path, on_progress, crf=crf, normalized=normalized)
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +126,7 @@ def export_gif(
     fps: int = 15,
     scale: float = 0.5,
     on_progress: ProgressCallback = None,
+    normalized: bool = False,
 ) -> str:
     """导出为 gif 动图。
 
@@ -117,7 +144,9 @@ def export_gif(
     # 第一步：先把多个片段拼接为临时 mp4（拼接逻辑复用）
     tmp_concat = out_path + ".tmp.mp4"
     try:
-        concat_videos(video_files, tmp_concat, on_progress=on_progress)
+        def part(start, span):
+            return (lambda p, m: on_progress(start + span * p / 100, m)) if on_progress else None
+        concat_videos(video_files, tmp_concat, on_progress=part(0, 30), normalized=normalized)
 
         # 第二步：临时 mp4 -> gif（palettegen + paletteuse 两遍法）
         vf = (
@@ -129,7 +158,7 @@ def export_gif(
         # gif 转码需要读取出时长来报进度
         info = ffmpeg_util.get_video_info(tmp_concat)
         ffmpeg_util.run_ffmpeg(args, total_duration=info["duration"],
-                               on_progress=on_progress, extra_message="生成 GIF 中")
+                               on_progress=part(30, 70), extra_message="生成 GIF 中")
     finally:
         # 清理临时文件
         if os.path.exists(tmp_concat):

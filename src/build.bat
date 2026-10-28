@@ -1,48 +1,35 @@
 @echo off
+setlocal EnableExtensions DisableDelayedExpansion
 rem ============================================================
 rem 一键打包 .exe 脚本 (Windows)
 rem 用法：双击运行 build.bat
-rem 生成的文件在 dist\B站视频处理工具.exe
+rem 生成经过检查的便携 ZIP，位于仓库根目录 dist
 rem ============================================================
 chcp 65001 >nul
-cd /d "%~dp0"
-
-rem 1. 查找 Python
-where py >nul 2>nul
-if %errorlevel%==0 (
-    set PY_CMD=py -3
-) else (
-    where python >nul 2>nul
-    if %errorlevel%==0 (
-        set PY_CMD=python
-    ) else (
-        echo [错误] 未找到 Python，请先安装 Python 3.10+ 并勾选 Add to PATH
-        pause
-        exit /b 1
-    )
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
+pushd "%~dp0" || exit /b 1
+set "BUILD_PY=%CD%\.venv\Scripts\python.exe"
+if not exist "%BUILD_PY%" (
+    echo [错误] 请先运行 install.bat 创建项目环境。
+    set "EXIT_CODE=1"
+    goto finish
 )
+echo 安装已锁定的构建依赖 ...
+"%BUILD_PY%" -m pip install -r requirements-build.txt
+if errorlevel 1 goto failed
+echo 开始测试、打包和便携包验证，可能需要几分钟 ...
+"%BUILD_PY%" ..\scripts\build_portable.py
+if errorlevel 1 goto failed
+echo [完成] 便携 ZIP、SHA256 和验证报告位于仓库根目录 dist 文件夹。
+set "EXIT_CODE=0"
+goto finish
 
-rem 2. 优先使用项目虚拟环境
-if exist ".venv\Scripts\activate.bat" call .venv\Scripts\activate.bat
+:failed
+echo [错误] 测试或打包未完成，请查看上方错误及 build\pyinstaller.log。
+set "EXIT_CODE=1"
 
-rem 3. 安装打包工具
-echo 安装打包工具 pyinstaller ...
-pip install pyinstaller -q
-
-rem 4. 执行打包（使用 bili_video_tool.spec 配置）
-echo 开始打包，首次需要几分钟，请耐心等待 ...
-python -m PyInstaller --noconfirm bili_video_tool.spec
-
-rem 5. 提示结果
-if exist "dist\B站视频处理工具.exe" (
-    echo.
-    echo ======================================================
-    echo   打包成功！
-    echo   文件位置：dist\B站视频处理工具.exe
-    echo   双击即可运行，可拷贝到任意电脑使用（无需安装 Python）
-    echo ======================================================
-) else (
-    echo.
-    echo [错误] 打包失败，请把上方红色报错信息截图反馈
-)
+:finish
+popd
 pause
+endlocal & exit /b %EXIT_CODE%

@@ -36,6 +36,7 @@ echo "升级 pip ..."
 pip install --upgrade pip -q
 echo "安装依赖（首次可能需要几分钟）..."
 pip install -r requirements.txt
+python ../scripts/prepare_ffprobe.py
 
 echo ""
 echo "======================================================"

@@ -9,3 +9,13 @@ env/
 # PyInstaller 构建产物
 build/
 dist/
+
+# Local build runtime, caches and media
+.build-runtime/
+.cache/
+cache/
+.pytest_cache/
+downloads/
+output/
+*.log
+src/vendor/
