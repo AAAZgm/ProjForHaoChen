@@ -1,0 +1,2 @@
+# Windows batch scripts must keep CRLF when checked out.
+*.bat text eol=crlf

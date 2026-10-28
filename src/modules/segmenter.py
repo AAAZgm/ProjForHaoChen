@@ -21,7 +21,8 @@
   方便界面层（Gradio 表格）读写。
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
+import math
 from typing import Dict, List, Optional, Tuple
 
 
@@ -110,17 +111,17 @@ def sanitize_segments(segments: List[Segment], duration: float) -> List[Segment]
     """清洗片段列表：
       1. 限制 start/end 在 [0, duration] 范围内
       2. 剔除空片段（start >= end）
-      3. 按 start 排序
+      3. 保留用户排列顺序，不修改传入对象
     """
     result = []
     for seg in segments:
+        if not all(math.isfinite(v) for v in (seg.start, seg.end, seg.speed)):
+            raise ValueError("片段时间和速度必须是有限数值")
         start = min(max(0.0, seg.start), duration)
         end = min(max(0.0, seg.end), duration)
         if end - start < 0.05:   # 不足 0.05 秒的片段视为无效
             continue
-        seg.start, seg.end = start, end
-        result.append(seg)
-    result.sort(key=lambda s: s.start)
+        result.append(replace(seg, start=start, end=end))
     return result
 
 

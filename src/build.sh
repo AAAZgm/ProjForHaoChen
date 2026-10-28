@@ -14,13 +14,13 @@ if [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
 fi
 
-echo "安装打包工具 pyinstaller ..."
-pip install pyinstaller -q
+echo "安装已锁定的构建依赖 ..."
+python -m pip install -r requirements-build.txt
 
 echo "开始打包（首次需要几分钟）..."
-python -m PyInstaller --noconfirm bili_video_tool.spec
+python ../scripts/build_portable.py
 
 echo ""
 echo "======================================================"
-echo "  打包成功！文件位置：dist/ 目录"
+echo "  打包成功！便携 ZIP 位于仓库根目录 dist/"
 echo "======================================================"

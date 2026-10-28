@@ -14,11 +14,16 @@ ffmpeg 工具模块
 """
 
 import os
-import re
+import json
+import math
+from pathlib import Path
+import sys
+from fractions import Fraction
 import shutil
 import subprocess
 import threading
 from typing import Callable, Dict, Optional
+from . import tasks, runtime, process_performance
 
 # ---------------------------------------------------------------------------
 # 常量
@@ -58,47 +63,64 @@ def get_ffmpeg_exe() -> str:
 # ---------------------------------------------------------------------------
 # 视频信息读取
 # ---------------------------------------------------------------------------
+def get_ffprobe_exe() -> str:
+    root = Path(getattr(sys, "_MEIPASS", runtime.application_dir()))
+    bundled = root / "vendor" / "ffprobe" / ("ffprobe.exe" if os.name == "nt" else "ffprobe")
+    if bundled.is_file():
+        return str(bundled)
+    # A portable build must not silently depend on the host installation.
+    if not getattr(sys, "frozen", False):
+        system = shutil.which("ffprobe")
+        if system:
+            return system
+    raise RuntimeError("缺少 ffprobe。便携版请重新解压完整压缩包；源码版请重新运行安装脚本。")
+
+
+def probe(path):
+    tasks.check()
+    result = subprocess.run([get_ffprobe_exe(), "-v", "error", "-show_format", "-show_streams",
+                             "-of", "json", str(path)], capture_output=True, timeout=30,
+                            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    tasks.check()
+    if result.returncode:
+        raise RuntimeError("无法读取视频时长或画面；文件可能损坏、已被移动或不是有效视频。")
+    return json.loads(result.stdout)
+
+
+def _positive(value, default=0):
+    try:
+        number = float(Fraction(str(value)))
+        return number if math.isfinite(number) and number > 0 else default
+    except (ValueError, ZeroDivisionError, TypeError):
+        return default
+
+
 def get_video_info(path: str) -> Dict:
-    """读取视频基本信息（不重新编码，速度快）。
-
-    返回字典包含：
-      duration  总时长（秒）
-      width     画面宽度
-      height    画面高度
-      fps       帧率
-      has_audio 是否含音频流
-
-    实现方式：解析 `ffmpeg -i` 输出到 stderr 的元信息文本。
-    """
-    ffmpeg = get_ffmpeg_exe()
-    # -hide_banner 去掉版本信息，信息都打印在 stderr
-    # 注意：ffmpeg 输出版本/信息默认全是 ASCII，但片名等可能含中文；
-    # 统一用二进制 + UTF-8 解码，避免 Windows 下默认 GBK 解码报错。
-    result = subprocess.run(
-        [ffmpeg, "-hide_banner", "-i", str(path)],
-        capture_output=True, text=False
-    )
-    text = result.stderr.decode("utf-8", errors="replace")
-
-    info: Dict = {"duration": 0.0, "width": 0, "height": 0, "fps": 0.0, "has_audio": False}
-
-    # 1. 解析时长：Duration: 00:00:10.52
-    m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", text)
-    if m:
-        h, mi, s = int(m.group(1)), int(m.group(2)), float(m.group(3))
-        info["duration"] = h * 3600 + mi * 60 + s
-
-    # 2. 解析视频流分辨率与帧率：Stream #0:0 ... Video: h264, ..., 1920x1080, 30 fps
-    m = re.search(r"Video:.*?(\d{2,5})x(\d{2,5}).*?([\d.]+)\s*fps", text)
-    if m:
-        info["width"] = int(m.group(1))
-        info["height"] = int(m.group(2))
-        info["fps"] = float(m.group(3))
-
-    # 3. 判断是否含音频流
-    info["has_audio"] = bool(re.search(r"Audio:", text))
-
-    return info
+    """Read structured stream metadata; editing uses FFmpeg's rotated orientation."""
+    metadata = probe(path)
+    streams = metadata.get("streams", [])
+    videos = [s for s in streams if s.get("codec_type") == "video" and not s.get("disposition", {}).get("attached_pic")]
+    if not videos:
+        raise RuntimeError("没有可编辑的视频画面，请选择有效的视频文件")
+    stream = videos[0]
+    width, height = int(stream.get("width", 0)), int(stream.get("height", 0))
+    angle = stream.get("tags", {}).get("rotate", 0)
+    for side in stream.get("side_data_list", []):
+        if "rotation" in side:
+            angle = side["rotation"]
+            break
+    angle = float(angle)
+    if not math.isfinite(angle):
+        angle = 0
+    if round(angle) % 180 == 90:
+        width, height = height, width
+    duration = _positive(stream.get("duration")) or _positive(metadata.get("format", {}).get("duration"))
+    if duration <= 0 or min(width, height) < 2:
+        raise RuntimeError("无法读取视频时长或画面，请确认文件完整且未损坏")
+    return dict(duration=duration, width=width, height=height,
+                fps=_positive(stream.get("avg_frame_rate")) or _positive(stream.get("r_frame_rate")),
+                has_audio=any(s.get("codec_type") == "audio" for s in streams), rotation=angle,
+                codec=stream.get("codec_name", ""), pixel_format=stream.get("pix_fmt", ""))
 
 
 def extract_frame(input_path: str, t: float, out_path: str) -> str:
@@ -115,7 +137,8 @@ def extract_frame(input_path: str, t: float, out_path: str) -> str:
     result = subprocess.run(
         [ffmpeg, "-hide_banner", "-y", "-ss", f"{t:.3f}", "-i", str(input_path),
          "-frames:v", "1", str(out_path)],
-        capture_output=True, text=False
+        capture_output=True, text=False, timeout=30,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
     if result.returncode != 0 or not os.path.exists(out_path):
         err = result.stderr.decode("utf-8", errors="replace")
@@ -143,6 +166,7 @@ def run_ffmpeg(
     实现方式：通过 `-progress pipe:1 -nostats` 让 ffmpeg 把进度信息
     写到 stdout，逐行解析 out_time_us（已处理的时间，微秒）。
     """
+    tasks.check()
     ffmpeg = get_ffmpeg_exe()
     # -y 覆盖输出文件；-progress pipe:1 输出进度；-nostats 关闭多余统计
     cmd = [ffmpeg, "-hide_banner", "-y", "-progress", "pipe:1", "-nostats"] + list(args)
@@ -155,6 +179,7 @@ def run_ffmpeg(
         encoding="utf-8",
         errors="replace",
         bufsize=1,
+        creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
 
     # Windows 管道缓冲较小，ffmpeg 编码结束时向 stderr 输出的统计信息（如
@@ -168,21 +193,32 @@ def run_ffmpeg(
 
     out_time_us = 0.0
 
-    # 逐行读取 stdout 中的进度信息
-    for line in process.stdout:
-        line = line.strip()
-        # 格式示例：out_time_us=5234000.000000
-        if line.startswith("out_time_us="):
+    try:
+        with tasks.watch_process(process):
+            process_performance.request_high_qos(process.pid)
+            for line in process.stdout:
+                line = line.strip()
+                if line.startswith("out_time_us="):
+                    try:
+                        out_time_us = float(line.split("=", 1)[1])
+                    except ValueError:
+                        continue
+                    if total_duration > 0 and on_progress:
+                        percent = min(100.0, out_time_us / 1_000_000 / total_duration * 100)
+                        on_progress(percent, extra_message)
+            return_code = process.wait()
+    finally:
+        # 回调异常时也结束子进程，确保临时文件可以被清理。
+        if process.poll() is None:
+            process.terminate()
             try:
-                out_time_us = float(line.split("=", 1)[1])
-            except ValueError:
-                continue
-            if total_duration > 0 and on_progress:
-                percent = min(100.0, out_time_us / 1_000_000 / total_duration * 100)
-                on_progress(percent, extra_message)
-
-    return_code = process.wait()
-    stderr_thread.join(timeout=5)
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+        stderr_thread.join()
+        process.stdout.close()
+        process.stderr.close()
     stderr_text = "".join(stderr_lines)
     if return_code != 0:
         # 提取最后几行错误信息便于定位问题

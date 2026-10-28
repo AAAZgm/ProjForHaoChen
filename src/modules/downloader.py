@@ -122,7 +122,8 @@ class BiliDownloader:
             video_fmt = f"bestvideo[ext=mp4][height<={max_height}]"
         else:
             video_fmt = "bestvideo[ext=mp4]"
-        format_spec = f"{video_fmt}+bestaudio[ext=m4a]/best[ext=mp4]/best"
+        cap = f"[height<={max_height}]" if max_height and max_height > 0 else ""
+        format_spec = f"{video_fmt}+bestaudio[ext=m4a]/best[ext=mp4]{cap}/best{cap}"
 
         opts = self._base_opts()
         opts.update({
@@ -142,17 +143,11 @@ class BiliDownloader:
                 info = info["entries"][0]
             path = ydl.prepare_filename(info)
             if not os.path.exists(path):
-                # 合并后扩展名可能是 mp4，prepare_filename 可能仍是 .fXXX
-                # 兜底：在输出目录里找一个最晚修改的视频文件
-                candidates = [
-                    f for f in os.listdir(out_dir)
-                    if f.lower().endswith(".mp4")
-                ]
-                candidates.sort(key=lambda f: os.path.getmtime(os.path.join(out_dir, f)))
-                if candidates:
-                    path = os.path.join(out_dir, candidates[-1])
+                merged = info.get("filepath") or os.path.splitext(path)[0] + ".mp4"
+                if os.path.isfile(merged):
+                    path = merged
                 else:
-                    raise RuntimeError("下载失败：找不到输出文件")
+                    raise RuntimeError("下载失败：找不到本次输出文件")
             if on_progress:
                 on_progress(100.0, "下载完成")
             return path

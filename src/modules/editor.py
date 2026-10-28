@@ -12,7 +12,7 @@
     - 分辨率/帧率/采样率标准化（保证后续拼接无参数冲突）
 
 所有片段统一输出为：
-  编码 libx264 + yuv420p（兼容性最好），帧率 DEFAULT_FPS，
+  编码 H.264 + yuv420p，帧率 DEFAULT_FPS，
   音频 aac 44100Hz。没有音频的片段输出静音音轨（保证拼接一致）。
 
 滤镜实现说明：
@@ -25,6 +25,7 @@
 """
 
 import os
+from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
 from . import ffmpeg_util
@@ -32,8 +33,7 @@ from .ffmpeg_util import ProgressCallback
 from .segmenter import Segment
 
 # 输出编码参数（统一，保证拼接兼容）
-_VIDEO_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
-_AUDIO_ARGS = ["-c:a", "aac", "-b:a", "128k", "-ar", str(ffmpeg_util.DEFAULT_SAMPLE_RATE)]
+_AUDIO_ARGS = ["-c:a", "aac", "-b:a", "128k", "-ar", str(ffmpeg_util.DEFAULT_SAMPLE_RATE), "-ac", "2"]
 
 
 # ---------------------------------------------------------------------------
@@ -105,14 +105,16 @@ def build_filter_chain(
         audio_filter  音频滤镜（无音频时为 ""）
         need_audio    是否需要音频输出（消音时为 False）
 
-    滤镜执行顺序：时间裁剪 -> 去水印 -> 裁剪 -> 变速 -> 分辨率标准化 -> 帧率标准化。
-    片段的时间范围用 trim/atrim 滤镜实现（避免 -ss/-t 选项在多输入命令中
-    绑定到错误输入的问题）。
+    时间裁剪后先变速并筛选输出帧，再处理画面，避免缩放最终会丢弃的帧。
+    render_segment 在输入端定位，传入的片段时间已转换为相对起点。
     """
     # ---------- 基础滤镜阶段（按顺序排列） ----------
     stages: List[str] = []
     # 0. 时间裁剪（起点 -> 终点），重置时间戳从 0 开始
     stages.append(f"trim=start={seg.start:.3f}:end={seg.end:.3f},setpts=PTS-STARTPTS")
+    if seg.speed and seg.speed != 1.0:
+        stages.append(f"setpts=PTS/{seg.speed}")
+    stages.append(f"fps={ffmpeg_util.DEFAULT_FPS}")
 
     # 1. 去水印（delogo 插值填补，区域自动避开画面边缘）
     if seg.watermark:
@@ -130,10 +132,6 @@ def build_filter_chain(
         h = max(1, min(h, source_height - y))
         stages.append(f"crop={w}:{h}:{x}:{y}")
 
-    # 3. 变速（画面 setpts）
-    if seg.speed and seg.speed != 1.0:
-        stages.append(f"setpts=PTS/{seg.speed}")
-
     # 4. 分辨率标准化：等比缩放 + 黑边补齐（不拉伸变形）
     if common_size:
         W, H = common_size
@@ -144,9 +142,6 @@ def build_filter_chain(
     elif seg.crop:
         # 仅裁剪时，宽高可能为奇数（libx264 要求偶数），修正
         stages.append("scale=trunc(iw/2)*2:trunc(ih/2)*2")
-
-    # 5. 帧率标准化（保证拼接一致）
-    stages.append(f"fps={ffmpeg_util.DEFAULT_FPS}")
 
     # 6. 像素宽高比统一为 1:1
     #    不同路径（scale/pad/crop）会产生不同的 SAR，导致 concat 拼接时报
@@ -181,6 +176,10 @@ def render_segment(
     on_progress: ProgressCallback = None,
     seg_index: int = 0,
     seg_total: int = 1,
+    crf: int = 20,
+    encoder: str = "cpu",
+    source_info: Optional[Dict] = None,
+    decoder: str = "cpu",
 ) -> str:
     """把一个片段渲染为标准化中间视频文件。
 
@@ -195,9 +194,13 @@ def render_segment(
     返回：out_path
     """
     # 读取原视频信息（分辨率等）
-    info = ffmpeg_util.get_video_info(input_path)
+    from . import encoding, tasks
+    info = source_info or ffmpeg_util.get_video_info(input_path)
+    # Input accurate seeking skips unused prefixes; a bounded input also avoids
+    # decoding the entire remaining video after the selected interval.
+    relative_segment = replace(seg, start=0, end=seg.duration())
     video_graph, audio_filter, need_audio = build_filter_chain(
-        info["width"], info["height"], seg, common_size
+        info["width"], info["height"], relative_segment, common_size
     )
 
     # 音频处理：本片段"最终无声音"的情况有两种：
@@ -208,7 +211,9 @@ def render_segment(
     effective_mute = seg.mute or not info["has_audio"]
 
     # 构建命令（视频输入永远是 input 0）
-    args = ["-i", str(input_path)]
+    args = ["-ss", f"{seg.start:.6f}", "-t", f"{seg.duration():.6f}", "-i", str(input_path)]
+    if decoder == "av1_cuvid":
+        args = ["-hwaccel", "cuda", "-c:v", "av1_cuvid"] + args
     if effective_mute:
         # 追加静音音频源（时长 = 片段处理后时长），音频输入为 input 1
         silence_dur = seg.duration() / seg.speed
@@ -221,15 +226,25 @@ def render_segment(
     # 音频流映射与滤镜
     if effective_mute:
         # 显式 -map 会关闭自动映射，必须同时把视频流(0:v)和静音音轨(1:a)都映射出来
-        args += ["-map", "0:v", "-map", "1:a"]
+        args += ["-map", "0:V:0", "-map", "1:a:0"]
     elif audio_filter:
         # 音频滤镜（含 atrim 时间裁剪 / atempo 变速 / aresample 采样率统一）
-        args += ["-af", audio_filter]
+        args += ["-map", "0:V:0", "-map", "0:a:0", "-af", audio_filter]
 
     # 统一编码参数
-    args += _VIDEO_ARGS + _AUDIO_ARGS + [str(out_path)]
+    video_args = encoding.video_args(encoder, crf)
+    args += video_args + _AUDIO_ARGS + [str(out_path)]
 
-    total = seg.duration()
-    msg = f"处理片段 {seg_index + 1}/{seg_total}（{seg.start:.1f}s-{seg.end:.1f}s）"
-    ffmpeg_util.run_ffmpeg(args, total_duration=total, on_progress=on_progress, extra_message=msg)
+    total = seg.output_duration()
+    msg = f"{encoding.label(encoder, decoder)} · 片段 {seg_index + 1}/{seg_total}"
+    try:
+        ffmpeg_util.run_ffmpeg(args, total_duration=total, on_progress=on_progress, extra_message=msg)
+    except tasks.Cancelled:
+        raise
+    except RuntimeError as error:
+        if decoder != "cpu":
+            raise encoding.HardwareDecodingError(str(error)) from error
+        if encoder == "nvenc":
+            raise encoding.HardwareEncodingError(str(error)) from error
+        raise
     return out_path
