@@ -4,7 +4,9 @@
 
 ## Windows 便携版
 
-当前候选：**1.0.0-rc.4**。本地交付包位于 `dist/bili-video-tool-1.0.0-rc.4-windows-x64.zip`。
+当前候选：**1.0.0-rc.5**。[下载 Windows 便携版](https://github.com/AAAZgm/ProjForHaoChen/releases/tag/v1.0.0-rc.5)。本地交付包位于 `dist/bili-video-tool-1.0.0-rc.5-windows-x64.zip`。
+
+rc.5 修复退出后轻剪窗口残留的问题：Windows 使用独立应用窗口，点击“退出程序”同时关闭窗口与后台；其他浏览器窗口保留。75 项回归、便携包验证和用户复验通过，详情见 [rc.5 验证记录](docs/RC5_VALIDATION.md)。
 
 rc.4 修复部分 Windows 启动环境中导出进程自动降档导致的性能差异；见 [rc.4 验证记录](docs/RC4_VALIDATION.md)。保留 rc.3 的 AV1 显卡解码、倍速处理优化和进度显示修正。
 
