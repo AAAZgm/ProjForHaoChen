@@ -52,6 +52,7 @@ python scripts/build_portable.py
 - **`modules/settings.py`** —— 当前用户的原子 JSON 配置，损坏备份恢复；目录、导出预设、GIF 和缓存保留天数。
 - **`modules/storage.py`** —— 独占创建防覆盖、文件名校验、剩余空间检查，以及只针对已退出运行目录的缓存清理。
 - **`modules/lifecycle.py`** —— 用户配置级实例锁、已运行实例验证、可用端口与退出；不得通过猜测 PID 结束进程。
+- **`modules/app_window.py`** —— Windows Edge / Chrome 独立应用窗口，使用本次缓存中的独立配置，仅关闭保留的 Popen 子进程及其窗口；禁止按浏览器名称批量结束进程。重复启动由已验证实例处理并优先聚焦现有窗口。
 - **`modules/diagnostics.py` / `updates.py`** —— 有容量上限且隐藏凭据的日志、只读 GitHub 正式版本检查。
 
 ### 核心约定

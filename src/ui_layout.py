@@ -154,7 +154,7 @@ def build_ui():
                             diagnostic_text = gr.Textbox(label="可复制的诊断信息", lines=8, buttons=["copy"], interactive=False)
                         reopen = gr.Button("重新打开页面")
                         exit_app = gr.Button("退出程序", variant="stop")
-                        gr.Markdown("关闭浏览器不会退出程序。使用完毕请点击退出；再次双击会重开已有页面。")
+                        gr.Markdown("点击“退出程序”会关闭轻剪窗口和后台。只关闭窗口后，再次双击可重新打开。")
         with gr.Accordion("错误详情", open=False):
             details = gr.Textbox(label="详情", interactive=False, lines=4, buttons=["copy"])
 
@@ -206,5 +206,7 @@ def build_ui():
         check_update.click(updates.check_update, outputs=update_status, api_name="check_update")
         diagnostic_button.click(diagnostics.report, outputs=diagnostic_text, api_name="diagnostics")
         reopen.click(lifecycle.reopen, outputs=settings_status, queue=False, api_visibility="private")
-        exit_app.click(lifecycle.request_shutdown, outputs=settings_status, queue=False, api_name="exit_app")
+        from modules.app_window import EXIT_JS
+        exit_app.click(lifecycle.request_shutdown, outputs=settings_status, queue=False, api_name="exit_app").success(
+            None, js=EXIT_JS, queue=False)
     return demo

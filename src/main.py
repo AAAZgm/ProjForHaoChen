@@ -216,7 +216,7 @@ def entrypoint():
     args = parser.parse_args()
     if args.data_dir:
         os.environ["BILI_VIDEO_HOME"] = os.path.abspath(args.data_dir)
-    from modules import diagnostics, settings, storage, lifecycle, tasks, web_runtime
+    from modules import diagnostics, settings, storage, lifecycle, tasks, web_runtime, app_window
     # Each launch owns an isolated cache; configuration/logs stay outside resources.
     os.environ["GRADIO_TEMP_DIR"] = str(runtime.session_cache() / "gradio")
     if args.self_test:
@@ -235,8 +235,7 @@ def entrypoint():
         url = instance.existing_url()
         print(f"程序已在运行：{url}", flush=True)
         if not args.no_browser:
-            import webbrowser
-            webbrowser.open(url)
+            print(instance.reopen_existing(url), flush=True)
         return
     demo = None
     try:
@@ -257,8 +256,21 @@ def entrypoint():
         @app.get("/bili-health")
         def health():
             return {"nonce": instance.nonce, "version": runtime.APP_VERSION}
+        from fastapi import Header, HTTPException
+        from fastapi.responses import HTMLResponse
+        import secrets
+
+        @app.post("/bili-open")
+        def open_window(x_bili_instance: str = Header(default="")):
+            if not secrets.compare_digest(x_bili_instance, instance.nonce):
+                raise HTTPException(status_code=403, detail="Invalid instance")
+            return {"message": lifecycle.reopen()}
+
+        @app.get("/bili-goodbye", response_class=HTMLResponse)
+        def goodbye():
+            return app_window.GOODBYE_HTML
         instance.publish(url)
-        print(f"页面地址：{url}\n关闭浏览器后，可再次双击程序重开页面。退出请点击“设置与帮助 → 退出程序”。", flush=True)
+        print(f"页面地址：{url}\n再次双击可返回轻剪窗口。点击“设置与帮助 → 退出程序”会同时关闭轻剪窗口和后台。", flush=True)
         if not args.no_browser:
             lifecycle.reopen()
         lifecycle.shutdown.wait()
@@ -274,6 +286,7 @@ def entrypoint():
         # Cancellation terminates child processes and removes partial results.
         while tasks.any_busy():
             time.sleep(.1)
+        app_window.window.close()
         if demo is not None:
             demo.close()
         storage.clean_current_run()

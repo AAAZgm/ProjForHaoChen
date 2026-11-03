@@ -7,9 +7,8 @@ import socket
 import threading
 import time
 import urllib.request
-import webbrowser
 
-from . import runtime, tasks
+from . import runtime, tasks, app_window
 
 shutdown = threading.Event()
 _url = ""
@@ -77,6 +76,17 @@ class Instance:
                 self.file.close()  # OS releases the lock, including on process crashes.
                 self.file = None
 
+    def reopen_existing(self, url):
+        """Ask the verified owner to focus its window, not spawn an unowned tab."""
+        state = json.loads((self.directory / "instance.json").read_text(encoding="utf-8"))
+        if url != f"http://127.0.0.1:{int(state['port'])}/":
+            raise RuntimeError("程序正在重新启动，请稍后再次双击")
+        request = urllib.request.Request(url + "bili-open", data=b"", method="POST",
+                                         headers={"X-Bili-Instance": str(state["nonce"])})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=10) as response:
+            return json.load(response)["message"]
+
 
 def available_port(preferred=7860):
     if not 1 <= preferred <= 65535:
@@ -96,8 +106,9 @@ def available_port(preferred=7860):
 def reopen():
     if not _url:
         return "页面尚未启动，请稍后重试"
-    webbrowser.open(_url)
-    return "已请求浏览器重新打开页面"
+    if shutdown.is_set():
+        return "程序正在退出，请稍后重新启动"
+    return app_window.window.open(_url)
 
 
 def request_shutdown():
@@ -106,4 +117,4 @@ def request_shutdown():
     timer = threading.Timer(1, shutdown.set)
     timer.daemon = True
     timer.start()
-    return "正在取消剩余任务并退出程序。稍后可关闭此页面；下次双击即可重新启动。"
+    return "正在取消剩余任务并退出程序，轻剪窗口将自动关闭。下次双击即可重新启动。"

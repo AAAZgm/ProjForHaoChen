@@ -78,6 +78,15 @@ def smoke_portable(executable: Path, work: Path) -> dict:
                 capture_output=True, timeout=60, creationflags=hidden, check=True)
             assert "程序已在运行" in duplicate.stdout.decode("utf-8"), duplicate.stdout
             assert process.poll() is None
+            # Reopening a running instance requires its nonce, not an arbitrary web request.
+            try:
+                request = urllib.request.Request(url + "bili-open", data=b"", method="POST")
+                opener.open(request, timeout=5)
+                raise AssertionError("Unauthenticated reopen was accepted")
+            except urllib.error.HTTPError as error:
+                assert error.code == 403
+            with opener.open(url + "bili-goodbye", timeout=5) as response:
+                assert "轻剪已退出" in response.read().decode("utf-8")
             with opener.open(url, timeout=5) as response:
                 html = response.read().decode("utf-8")
             assets = re.findall(r'(?:src|href)="([^\"]+\.(?:js|css)(?:\?[^\"]*)?)"', html)

@@ -30,5 +30,5 @@ set "EXIT_CODE=1"
 
 :finish
 popd
-pause
+if not "%EXIT_CODE%"=="0" pause
 endlocal & exit /b %EXIT_CODE%
