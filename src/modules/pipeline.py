@@ -33,6 +33,32 @@ from .ffmpeg_util import ProgressCallback
 from .segmenter import Segment
 
 
+def prepare_sources(sources):
+    """Probe every source and preserve source/segment order for video and audio."""
+    prepared = []
+    for path, segments in sources:
+        tasks.check()
+        info = ffmpeg_util.get_video_info(path)
+        cleaned = segmenter.sanitize_segments(segments, info["duration"])
+        if not cleaned:
+            raise RuntimeError("没有有效的片段（请检查起止时间）")
+        errors = segmenter.validate_segments(cleaned)
+        if errors:
+            raise RuntimeError("片段参数有误：" + "；".join(errors))
+        kept = [seg for seg in cleaned if not seg.deleted]
+        if not kept:
+            raise RuntimeError("所有片段都被删除了，没有可导出的内容")
+        for seg in kept:
+            if seg.crop:
+                x, y, w, h = seg.crop
+                if x < 0 or y < 0 or w < 2 or h < 2 or x + w > info["width"] or y + h > info["height"]:
+                    raise ValueError("裁剪区域必须位于画面内，宽高至少为 2 像素")
+        prepared.append((str(path), kept, info))
+    if not prepared:
+        raise ValueError("请先添加素材")
+    return prepared
+
+
 class VideoPipeline:
     """视频处理流水线。"""
 
@@ -40,6 +66,12 @@ class VideoPipeline:
         self.work_dir = work_dir or str(runtime.session_cache() / "work")
         self.last_engine = "cpu"
         self.last_decoder = "cpu"
+
+    def process_many(self, sources, **options):
+        sources = list(sources)
+        if not sources:
+            raise ValueError("请先添加素材")
+        return self.process(*sources[0], _additional_sources=sources[1:], **options)
 
     # ------------------------------------------------------------------
     def _common_size(self, input_path: str, segments: List[Segment], info=None) -> Optional[tuple]:
@@ -74,6 +106,7 @@ class VideoPipeline:
         on_progress: ProgressCallback = None,
         preset: str = "standard",
         acceleration: str = "cpu",
+        _additional_sources=None,
     ) -> str:
         """执行完整处理流水线，返回导出文件路径。
 
@@ -93,32 +126,15 @@ class VideoPipeline:
         storage.require_space(out_dir)
         storage.require_space(self.work_dir)
 
-        # 读取视频信息
-        info = ffmpeg_util.get_video_info(input_path)
-        if info["duration"] <= 0:
-            raise RuntimeError("无法读取视频时长，请确认文件是有效的视频")
-
-        # ---------- 1. 清洗与校验片段 ----------
-        segments = segmenter.sanitize_segments(segments, info["duration"])
-        if not segments:
-            raise RuntimeError("没有有效的片段（请检查起止时间）")
-        errors = segmenter.validate_segments(segments)
-        if errors:
-            raise RuntimeError("片段参数有误：\n" + "\n".join(errors))
-
-        # 统计保留片段
-        kept = [s for s in segments if not s.deleted]
-        if not kept:
-            raise RuntimeError("所有片段都被删除了，没有可导出的内容")
-
-        for seg in kept:
-            if seg.crop:
-                x, y, w, h = seg.crop
-                if x < 0 or y < 0 or w < 2 or h < 2 or x + w > info["width"] or y + h > info["height"]:
-                    raise ValueError("裁剪区域必须位于画面内，宽高至少为 2 像素")
+        sources = prepare_sources([(input_path, segments)] + list(_additional_sources or []))
+        input_path, segments, info = sources[0]
+        clips = [(path, seg, metadata) for path, rows, metadata in sources for seg in rows]
+        kept = [seg for _, seg, _ in clips]
 
         # ---------- 2. 计算统一分辨率 ----------
         common_size = self._common_size(input_path, segments, info)
+        if len(sources) > 1 and common_size is None:
+            common_size = (info["width"] // 2 * 2, info["height"] // 2 * 2)
         crf = 26 if preset == "small" else 20
         if preset in ("small", "preview"):
             w, h = common_size or (info["width"], info["height"])
@@ -148,7 +164,7 @@ class VideoPipeline:
             raise ValueError("GIF 帧率需为 5–30，缩放比例需为 0.1–1")
         out_name = out_name or f"output_{int(time.time())}_{uuid.uuid4().hex[:8]}"
         self.last_engine = encoding.select(acceleration, *(common_size or (info['width'], info['height'])))
-        self.last_decoder = encoding.select_decoder(self.last_engine, info)
+        self.last_decoder = "av1_cuvid" if any(encoding.select_decoder(self.last_engine, data) != "cpu" for _, _, data in sources) else "cpu"
         diagnostics.LOG.info("Export encoder: %s, %sx%s, %s segments", self.last_engine, info['width'], info['height'], len(kept))
         diagnostics.LOG.info("Export decoder: %s; source codec: %s; preset: %s; source/output seconds: %.3f/%.3f",
             self.last_decoder, info.get("codec"), preset, info['duration'], sum(s.output_duration() for s in kept))
@@ -163,13 +179,14 @@ class VideoPipeline:
                 def render_all():
                     completed = 0.0
                     intermediate_files.clear()
-                    for i, seg in enumerate(kept):
+                    for i, (source_path, seg, source_info) in enumerate(clips):
                         tasks.check()
                         seg_path = os.path.join(tmp_dir, f"seg_{i:03d}.mp4")
                         span = 78 * seg.output_duration() / total
-                        editor.render_segment(input_path, seg, seg_path, common_size=common_size,
+                        decoder = encoding.select_decoder(self.last_engine, source_info) if self.last_decoder != "cpu" else "cpu"
+                        editor.render_segment(source_path, seg, seg_path, common_size=common_size,
                             on_progress=part(2 + completed, span), seg_index=i, seg_total=len(kept), crf=crf,
-                            encoder=self.last_engine, source_info=info, decoder=self.last_decoder)
+                            encoder=self.last_engine, source_info=source_info, decoder=decoder)
                         completed += span
                         intermediate_files.append(seg_path)
                 try:

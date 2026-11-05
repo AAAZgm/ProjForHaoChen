@@ -35,11 +35,14 @@ python scripts/build_portable.py
 
 - **`main.py`** —— 命令行、便携包自检和下载子进程入口；保留早期回调兼容接口。
 - **`ui.py`** —— 导入、编辑、导出回调；每个页面使用独立的 `gr.State(Workspace)`，高级表格保留固定 14 列。
-- **`ui_layout.py`** —— 工作台、导出、设置三页布局及 CSS；不要用 Gradio 自身的 `panel` 等状态类名作为自定义样式类。
+- **`ui_layout.py`** —— 工作台、导出、批量与拼接、设置四页布局及 CSS；不要用 Gradio 自身的 `panel` 等状态类名作为自定义样式类。
+- **`studio_ui.py` / `modules/studio.py`** —— 每页面 `Studio` 列表，所有素材均为 Workspace 深拷贝；批量失败继续、取消保留成功文件，相同参数续做跳过已完成项。长任务进入 `tasks.task(studio.id)`，禁止在该上下文内 yield（Gradio 会跨线程恢复生成器）。
+- **`modules/project_file.py`** —— `.qjproj` 存储严格清单与带校验值的原素材；恢复到独立缓存，全部验证通过后替换列表。不得按归档任意路径解压，不保存机器专属目录或登录凭据。
+- **`modules/audio_export.py`** —— 独立音频管线，保留片段顺序、截取、变速、静音；标准化 PCM 中间音轨后编码为 M4A/MP3/WAV，不渲染视频。
 - **`modules/workspace.py`** —— 会话素材、片段选择、分割/重排、效果及最多 50 步撤销/重做；不会修改其他会话。
 - **`modules/tasks.py`** —— 每会话取消令牌、单个重型任务执行槽及子进程终止。所有长任务须进入 `tasks.task()`；取消按钮通过非排队回调设置令牌。
 - **`modules/download_job.py`** —— 下载在独立子进程中运行，取消时连同合并进程结束，独立临时目录自动清理。
-- **`modules/pipeline.py`** —— 处理管线总入口 `VideoPipeline.process()`:清洗校验片段 → 计算统一分辨率 `_common_size()` → 逐段 `editor.render_segment()` 渲染中间文件 → `exporter` 拼接导出 → 清理临时文件。
+- **`modules/pipeline.py`** —— 处理入口 `VideoPipeline.process()` / `process_many()`:清洗校验片段 → 计算统一分辨率 `_common_size()` → 逐段 `editor.render_segment()` 渲染中间文件 → `exporter` 拼接导出 → 清理临时文件。多文件合并逐源探测解码方式，保持整任务编码一致；显卡失败时重渲染全部来源。
 - **`modules/segmenter.py`** —— `Segment` dataclass(数据模型)+ 校验/清洗工具函数。
 - **`modules/editor.py`** —— 单段渲染,用 `build_filter_chain()` 生成 ffmpeg 滤镜串。
 - **`modules/encoding.py`** —— 实际试编码检测 NVENC，UI 默认 auto，编程调用默认 cpu；显卡失败由管线全任务回退，取消不重试。

@@ -1,6 +1,7 @@
 """Task-oriented layout; editing callbacks remain in ui.py."""
 import gradio as gr
 import ui as actions
+import studio_ui
 from modules import runtime, settings, tasks, lifecycle, diagnostics, updates
 from modules.workspace import Workspace
 from modules.table import TABLE_HEADERS, TABLE_DATATYPE
@@ -128,6 +129,9 @@ def build_ui():
                             open_file = gr.Button("打开成品")
                             open_folder = gr.Button("打开所在文件夹")
 
+            with gr.Tab("3 · 批量与拼接", id="studio"):
+                studio_panel = studio_ui.build_panel(config)
+
             with gr.Tab("设置与帮助", id="settings"):
                 with gr.Row(equal_height=False):
                     with gr.Column(scale=2, min_width=350, elem_classes="work-panel"):
@@ -160,6 +164,7 @@ def build_ui():
 
         edit_outputs = [state, selected, table, start, end, mute, speed, status]
         import_outputs = edit_outputs + [source, canvas, cursor]
+        studio_ui.bind(studio_panel, state, import_outputs, pages)
         summary_inputs = [state, preset, fps, scale, output_dir]
         def refresh(event):
             event.then(actions.summary, summary_inputs, estimate, api_visibility="private")

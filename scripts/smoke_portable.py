@@ -103,6 +103,8 @@ def smoke_portable(executable: Path, work: Path) -> dict:
             editor_report = check_editor(url, source, work / "client-downloads")
             from check_release_api import check_release, verify_restart_and_exit
             release_report = check_release(url, source, work)
+            from check_stage_d_api import check_stage_d, check_stage_d_restart
+            stage_d_report = check_stage_d(url, source, work / "stage-d")
             from gradio_client import Client
             exit_client = Client(url, verbose=False, analytics_enabled=False,
                                  httpx_kwargs={"trust_env": False}, download_files=False)
@@ -116,13 +118,14 @@ def smoke_portable(executable: Path, work: Path) -> dict:
             process = subprocess.Popen([str(executable), "--no-browser", "--data-dir", str(work / "data")],
                 cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=hidden)
             url, _ = wait_ready(process, work, opener)
+            stage_d_report["plan_restore_after_restart"] = check_stage_d_restart(url, work / "stage-d")
             verify_restart_and_exit(url, release_report, source)
             assert process.wait(timeout=30) == 0
             release_report.update(repeat_launch="passed", occupied_port="passed", restart_persistence="passed",
                                   graceful_exit_and_cache_cleanup="passed", exit_cancels_active_export="passed")
             return {"status": "passed", "media": media,
                     "http": {"components": len(config["components"]), "local_assets": len(local_assets),
-                             "editor": editor_report, "release": release_report},
+                             "editor": editor_report, "release": release_report, "stage_d": stage_d_report},
                     "isolation": "Frozen executable, bundled FFmpeg and ffprobe, stripped PATH, unrelated working directory"}
         finally:
             occupied.close()

@@ -17,6 +17,10 @@ ffmpeg_util.get_ffmpeg_exe() 找到的二进制，无需用户额外安装。
 """
 
 import os
+import json
+import re
+import urllib.request
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
 from typing import Callable, Dict, Optional
 
 import yt_dlp
@@ -50,6 +54,73 @@ class BiliDownloader:
             "verbose": False,
             "noplaylist": True,          # 只处理当前视频，不处理整个合集
         }
+
+    def _part_metadata(self, url):
+        parsed = urlsplit(url)
+        match = re.fullmatch(r"/video/(BV[0-9A-Za-z]{10}|av[0-9]+)/?", parsed.path)
+        if not match:
+            return None
+        video_id = match.group(1)
+        query = {"bvid": video_id} if video_id.startswith("BV") else {"aid": video_id[2:]}
+        request = urllib.request.Request("https://api.bilibili.com/x/player/pagelist?" + urlencode(query),
+            headers={"User-Agent": "Mozilla/5.0", "Referer": "https://www.bilibili.com/"})
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = response.read(2 * 1024 * 1024 + 1)
+        if len(payload) > 2 * 1024 * 1024:
+            raise ValueError("分 P 列表过大")
+        data = json.loads(payload)
+        if data.get("code") != 0 or not isinstance(data.get("data"), list) or not data["data"]:
+            raise ValueError("未找到分 P，请确认视频仍可公开访问")
+        if len(data["data"]) > 100:
+            raise ValueError("分 P 数超过 100，请使用具体分 P 链接分批下载")
+        return [dict(url=f"https://www.bilibili.com/video/{video_id}?p={int(p['page'])}",
+                     title=str(p.get("part") or f"第 {p['page']} P"), page=str(p["page"])) for p in data["data"]]
+
+    def parts(self, url):
+        """List anthology URLs without downloading each part's streams."""
+        def normalized(value):
+            parsed = urlsplit(value)
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme not in ("http", "https") or not (host == "b23.tv" or host == "bilibili.com" or host.endswith(".bilibili.com")):
+                raise ValueError("多 P 选择仅支持 B 站视频链接或 b23.tv 短链")
+            query = urlencode([(k, v) for k, v in parse_qsl(parsed.query) if k != "p"])
+            return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, ""))
+        url = normalized(url)
+        # Public part metadata includes human-readable titles and does not need
+        # playback stream extraction for every item in the selection list.
+        if urlsplit(url).hostname == "b23.tv":
+            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}), timeout=20) as response:
+                url = normalized(response.geturl())
+        metadata = self._part_metadata(url)
+        if metadata is not None:
+            return metadata
+        opts = self._base_opts()
+        opts.update(noplaylist=False, extract_flat="in_playlist", skip_download=True, quiet=True, playlistend=101)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(normalized(url), download=False)
+            if not info:
+                raise ValueError("未找到视频分 P")
+            resolved = info.get("webpage_url") or url
+            if not info.get("entries") and "p" in dict(parse_qsl(urlsplit(resolved).query)):
+                info = ydl.extract_info(normalized(resolved), download=False)
+            entries = info.get("entries") if info else None
+            if entries is None:
+                entries = [info]
+            result = []
+            for index, entry in enumerate(entries):
+                if index >= 100:
+                    raise ValueError("分 P 数超过 100，请使用具体分 P 链接分批下载")
+                if not entry:
+                    continue
+                link = entry.get("webpage_url") or entry.get("url")
+                if not link or "/video/" not in urlsplit(link).path:
+                    raise ValueError("请使用视频页链接，暂不支持收藏夹或频道合集")
+                normalized(link)  # Validate site without removing the selected part from its URL.
+                page = dict(parse_qsl(urlsplit(link).query)).get("p", str(index + 1))
+                result.append(dict(url=link, title=str(entry.get("title") or f"第 {page} P"), page=str(page)))
+            if not result:
+                raise ValueError("未找到可下载的分 P")
+            return result
 
     # ------------------------------------------------------------------
     def parse_url(self, url: str) -> Dict:

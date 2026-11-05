@@ -136,7 +136,7 @@ class ReleaseSupport(unittest.TestCase):
             self.assertNotEqual(lifecycle.available_port(occupied.getsockname()[1]), occupied.getsockname()[1])
 
     def test_updates_new_same_offline_missing_and_rate_limited(self):
-        for tag, message in (("v1.0.0", "发现正式版本"), ("v0.2.0", "未发现更新")):
+        for tag, message in (("v9.0.0", "发现正式版本"), ("v0.2.0", "未发现更新")):
             with patch("modules.updates.urllib.request.urlopen", return_value=io.BytesIO(json.dumps({"tag_name": tag}).encode())):
                 self.assertIn(message, updates.check_update())
         with patch("modules.updates.urllib.request.urlopen", side_effect=OSError("offline")):
