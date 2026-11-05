@@ -13,7 +13,10 @@ Linux/macOS 需通过系统包管理器安装含 ffprobe 的 FFmpeg，再运行 
 ## 结构
 
 - `main.py`：启动参数、实例管理、退出、自检、下载子进程入口。
-- `ui.py`：导入、片段编辑、框选、导出和设置回调；`ui_layout.py`：工作台、导出与帮助页的布局和样式。
+- `ui.py`：导入、片段编辑、框选、导出和设置回调；`ui_layout.py`：工作台、导出、批量与帮助页的布局和样式。
+- `studio_ui.py`、`modules/studio.py`：各页面独立的多素材列表、剪辑副本、批量任务、顺序拼接与取消续做。
+- `modules/project_file.py`：包含原素材的 `.qjproj` 方案及校验恢复；`modules/audio_export.py`：M4A/MP3/WAV 导出。
+- `modules/downloader.py`、`download_job.py`：分 P 元数据与独立下载子进程。
 - `modules/workspace.py`：独立会话、片段顺序、历史。
 - `modules/tasks.py`：队列、取消、子进程结束。
 - `modules/pipeline.py`、`editor.py`、`exporter.py`：视频处理与导出。

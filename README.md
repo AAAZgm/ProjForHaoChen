@@ -1,10 +1,12 @@
 # 轻剪 · 视频下载与编辑
 
-把本地视频或 B 站视频剪成需要的片段，再导出 MP4 / GIF。支持消音、倍速、裁剪、水印区域淡化、分割重排和撤销重做。
+把本地视频或 B 站视频剪成需要的片段，再导出 MP4 / GIF。支持消音、倍速、裁剪、水印区域淡化、分割重排和撤销重做。v1.1 开发版新增批量、多 P 选择、多文件拼接、音频导出和可携带原素材的编辑方案。
 
 ## Windows 便携版
 
-当前候选：**1.0.0-rc.5**。[下载 Windows 便携版](https://github.com/AAAZgm/ProjForHaoChen/releases/tag/v1.0.0-rc.5)。本地交付包位于 `dist/bili-video-tool-1.0.0-rc.5-windows-x64.zip`。
+当前版本：**1.1.0-beta.1（预发布）**。[下载 Windows 便携版](https://github.com/AAAZgm/ProjForHaoChen/releases/tag/v1.1.0-beta.1)。上一版 [1.0.0-rc.5](https://github.com/AAAZgm/ProjForHaoChen/releases/tag/v1.0.0-rc.5) 继续保留。
+
+进入“3 · 批量与拼接”使用批量导出、B 站多 P 选择、多文件拼接、音频导出和编辑方案保存/恢复。88 项回归及最终便携包验证通过，用户确认功能符合预期；详见 [使用说明](docs/PORTABLE_README.md)、[D 阶段验证](docs/STAGE_D_VALIDATION.md) 和 [用户验收](docs/USER_TRIALS.md)。本地包位于 `dist/bili-video-tool-1.1.0-beta.1-windows-x64.zip`。
 
 rc.5 修复退出后轻剪窗口残留的问题：Windows 使用独立应用窗口，点击“退出程序”同时关闭窗口与后台；其他浏览器窗口保留。75 项回归、便携包验证和用户复验通过，详情见 [rc.5 验证记录](docs/RC5_VALIDATION.md)。
 
@@ -37,7 +39,7 @@ src\.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
 src\.venv\Scripts\python.exe -X utf8 scripts\build_portable.py
 ```
 
-或双击 `src/build.bat`。构建流程运行回归、打包、ZIP 解压验证，再生成 ZIP、SHA256 和 JSON 报告。解压验证覆盖本地服务、编辑导出、取消、保存设置、端口占用、重复启动、重启恢复和退出。
+或双击 `src/build.bat`。构建流程运行回归、打包、ZIP 解压验证，再生成 ZIP、SHA256 和 JSON 报告。解压验证覆盖本地服务、编辑导出、取消、保存设置、端口占用、重复启动、重启恢复和退出，以及批量音频、混合拼接、跨会话隔离和重启后的方案恢复。
 
 依赖锁定在 `src/requirements.txt` 和 `src/requirements-build.txt`；直接依赖见 `.in`。ffprobe 来源、版本及 SHA256 固定于 `scripts/prepare_ffprobe.py`，构建时校验，用户首次运行无需下载。
 
