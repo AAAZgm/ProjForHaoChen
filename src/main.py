@@ -18,6 +18,11 @@ import multiprocessing
 import os
 import sys
 
+# This must run before Gradio/orjson and any other native third-party imports.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from modules.platform_support import require_supported_platform
+require_supported_platform()
+
 # Keep the local interface usable without analytics/network access.
 os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
 

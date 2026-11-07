@@ -28,5 +28,24 @@ def extract_archive(source, destination, windows):
 
 def write_launcher(bundle, macos):
     launcher = Path(bundle) / ("Start.command" if macos else "start.sh")
-    launcher.write_text('#!/bin/sh\nset -eu\ncd "$(dirname "$0")"\nexec ./BiliVideoTool "$@"\n', encoding="utf-8", newline="\n")
+    gate = ""
+    if macos:
+        # Check before the frozen bootloader or Python loads any binary dependency.
+        from modules.platform_support import MIN_MACOS, MIN_MACOS_TEXT
+        gate = f'''version=$(SYSTEM_VERSION_COMPAT=0 /usr/bin/sw_vers -productVersion 2>/dev/null) || version=""
+major=${{version%%.*}}
+case "$major" in
+    ''|*[!0-9]*) supported=false ;;
+    *) if [ "$major" -ge {MIN_MACOS[0]} ]; then supported=true; else supported=false; fi ;;
+esac
+if [ "$supported" = false ]; then
+    printf '%s\\n' "轻剪此版本需要 macOS {MIN_MACOS_TEXT} 或更新系统，当前版本：${{version:-无法确认}}。请检查系统版本后再启动。" >&2
+    if [ -t 0 ]; then
+        printf '%s' '按回车关闭此窗口。' >&2
+        IFS= read -r reply || :
+    fi
+    exit 2
+fi
+'''
+    launcher.write_text('#!/bin/sh\nset -eu\n' + gate + 'cd "$(dirname "$0")"\nexec ./BiliVideoTool "$@"\n', encoding="utf-8", newline="\n")
     launcher.chmod(0o755)

@@ -81,13 +81,14 @@ class PlatformPackaging(unittest.TestCase):
             exe.write_text('#!/bin/sh\nprintf "%s" "$1"\n')
             exe.chmod(0o755)
             (bundle / "alias").symlink_to("BiliVideoTool")
-            write_launcher(bundle, True)
+            macos = sys.platform == "darwin"
+            write_launcher(bundle, macos)
             archive = root / "app.tar.gz"
             create_archive(bundle, archive, False)
             unpacked = root / "unpacked"
             extract_archive(archive, unpacked, False)
             self.assertTrue((unpacked / "BiliVideoTool/alias").is_symlink())
-            result = subprocess.run([str(unpacked / "BiliVideoTool/Start.command"), "中文 参数"],
+            result = subprocess.run([str(unpacked / "BiliVideoTool" / ("Start.command" if macos else "start.sh")), "中文 参数"],
                                     cwd=root, capture_output=True, text=True, check=True)
             self.assertEqual(result.stdout, "中文 参数")
 

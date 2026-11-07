@@ -37,7 +37,9 @@ jobs:
         run: python -m pip install -r src/requirements-build.txt
       - name: Check dependencies
         run: python -m pip check
-      - name: Build native ffprobe, test, freeze and verify extracted package
+      - name: Prepare verified native ffprobe
+        run: python scripts/prepare_ffprobe.py
+      - name: Test, freeze, audit and verify extracted package
         run: python scripts/build_portable.py
       - name: Upload verified package and checksum
         uses: actions/upload-artifact@v4

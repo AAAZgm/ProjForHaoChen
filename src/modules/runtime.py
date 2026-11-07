@@ -6,7 +6,7 @@ import sys
 import tempfile
 import uuid
 
-APP_VERSION = "1.2.0-beta.1"
+APP_VERSION = "1.2.0-beta.2"
 RELEASES_URL = "https://github.com/AAAZgm/ProjForHaoChen/releases"
 _run_id = uuid.uuid4().hex
 

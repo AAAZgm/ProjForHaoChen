@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import socket
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -44,8 +45,10 @@ def smoke_portable(executable: Path, work: Path) -> dict:
                BILI_CONFIG_HOME=str(work / "config"))
     hidden = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     media_log = work / "selfcheck.log"
+    # Exercise the shipped launcher as well as the direct executable used below.
+    entry = executable.parent / "Start.command" if sys.platform == "darwin" else executable
     with media_log.open("w", encoding="utf-8") as log:
-        subprocess.run([str(executable), "--self-test", str(work / "media")],
+        subprocess.run([str(entry), "--self-test", str(work / "media")],
                        cwd=work, env=env, stdout=log, stderr=subprocess.STDOUT,
                        check=True, timeout=120, creationflags=hidden)
     reports = list((work / "media").glob("selfcheck_*/report.json"))

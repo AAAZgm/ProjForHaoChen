@@ -34,6 +34,7 @@ python scripts/build_portable.py
 ### 分层
 
 - **`main.py`** —— 命令行、便携包自检和下载子进程入口；保留早期回调兼容接口。
+- **`modules/platform_support.py`** —— 最低 macOS 15.0 的启动检查；必须在 Gradio/orjson 等第三方依赖导入前执行，仅使用标准库。`Start.command` 在冻结程序启动前另有系统版本检查，不提供绕过开关。
 - **`ui.py`** —— 导入、编辑、导出回调；每个页面使用独立的 `gr.State(Workspace)`，高级表格保留固定 14 列。
 - **`ui_layout.py`** —— 工作台、导出、批量与拼接、设置四页布局及 CSS；不要用 Gradio 自身的 `panel` 等状态类名作为自定义样式类。
 - **`studio_ui.py` / `modules/studio.py`** —— 每页面 `Studio` 列表，所有素材均为 Workspace 深拷贝；批量失败继续、取消保留成功文件，相同参数续做跳过已完成项。长任务进入 `tasks.task(studio.id)`，禁止在该上下文内 yield（Gradio 会跨线程恢复生成器）。
@@ -59,6 +60,8 @@ python scripts/build_portable.py
 - **`modules/diagnostics.py` / `updates.py`** —— 有容量上限且隐藏凭据的日志、只读 GitHub 正式版本检查。
 
 ### 核心约定
+
+- **发行校验**：`scripts/bundle_validation.py` 在 PyInstaller 完成后更新 ffprobe 的 `binary_sha256`，原始输入值保留在 `sha256_before_freeze`；解压候选包后复核哈希。macOS 发行需扫描全部 Mach-O 架构与最低系统版本，不能只修改 ffprobe 部署目标就声称支持旧系统。
 
 - **片段数据模型**:`Segment(start, end, deleted, mute, speed, crop, watermark)`。crop 是 `(x, y, w, h)`,watermark 是 `{x, y, w, h, mode:"delogo"}`。通过 `to_dict()/from_dict()` 与表格/JSON 互转；`modules/table.py` 提供表格转换。片段校验保留输入顺序，不得再按起点排序。
 - **画面坐标**：以 FFmpeg 自动旋转后的画面尺寸为准，浏览器框选传归一化坐标及素材 ID，由 Workspace 校验并换算。旧素材选区必须拒绝。

@@ -18,6 +18,7 @@ from modules.ffmpeg_util import get_ffmpeg_exe
 from smoke_portable import smoke_portable
 from prepare_ffprobe import prepare as prepare_ffprobe
 from portable_archive import create_archive, extract_archive, write_launcher
+from bundle_validation import finalize_ffprobe_manifest, verify_bundle
 
 
 def third_party_notices(bundle: Path) -> None:
@@ -61,6 +62,7 @@ def main() -> None:
                         str(ROOT / "src" / "bili_video_tool.spec")],
                        cwd=ROOT / "src", env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
     bundle = dist / "BiliVideoTool"
+    finalize_ffprobe_manifest(bundle)
     shutil.copy2(ROOT / "docs" / "PORTABLE_README.md", bundle / "README.md")
     shutil.copy2(ROOT / "src" / "requirements.txt", bundle / "requirements.txt")
     for document in ("LICENSE", "CHANGELOG.md"):
@@ -79,8 +81,10 @@ def main() -> None:
     check_dir = Path(tempfile.mkdtemp(prefix="portable-中文 ", dir=build))
     extract_archive(candidate, check_dir, windows)
     executable = check_dir / "BiliVideoTool" / ("BiliVideoTool.exe" if os.name == "nt" else "BiliVideoTool")
-    print("Verifying extracted zip with system-only PATH...", flush=True)
+    package_audit = verify_bundle(executable.parent, platform.machine() if sys.platform == "darwin" else None)
+    print("Verifying extracted archive with system-only PATH...", flush=True)
     report = smoke_portable(executable, check_dir / "verification")
+    report["package_audit"] = package_audit
     final_zip = dist / f"{name}{extension}"
     candidate.replace(final_zip)
     digest = hashlib.sha256()

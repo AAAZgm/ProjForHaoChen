@@ -1,14 +1,14 @@
 # 轻剪：便携版使用说明
 
-版本：1.2.0-beta.1（跨平台候选版）
+版本：1.2.0-beta.2（跨平台候选版）
 
 ## macOS / Linux 启动
 
-- macOS：选择与电脑芯片匹配的 `macos-arm64`（Apple Silicon）或 `macos-x64`（Intel）包。完整解压 tar.gz 后双击 `Start.command`，也可以在终端运行 `./BiliVideoTool`。当前构建基线为 macOS 15；更早系统未验证。
+- macOS：选择与电脑芯片匹配的 `macos-arm64`（Apple Silicon）或 `macos-x64`（Intel）包。完整解压 tar.gz 后双击 `Start.command`，也可以在终端运行 `./BiliVideoTool`。最低支持 macOS 15.0；更早系统不支持。启动脚本在运行程序前检查系统版本，程序也会在导入界面依赖前检查并给出明确提示。
 - Linux：当前提供 x64 包，构建基线为 Ubuntu 22.04 / glibc 2.35。完整解压后在目录中运行 `./start.sh`；桌面环境需有默认浏览器和 `xdg-open`。不支持 Alpine/musl，也未覆盖所有发行版。
 - 两个平台均自带 Python、FFmpeg 和 ffprobe，无需安装开发环境。请在支持符号链接和执行权限的本地文件系统中解压，保留完整目录。
 - 启动后使用默认浏览器；点击“设置与帮助 → 退出程序”退出后台。标签页可能需要手动关闭，关闭标签页本身不退出后台。
-- macOS 包尚未使用 Apple Developer ID 签名和公证。系统可能拦截首次启动；只在确认下载来源与校验值后使用系统提供的“隐私与安全性 → 仍要打开”。不需要关闭系统安全保护。
+- macOS 二进制带有 ad-hoc 签名，尚未使用 Apple Developer ID 签名和公证。系统可能拦截首次启动；只在确认下载来源与校验值后使用系统提供的“隐私与安全性 → 仍要打开”。不需要关闭系统安全保护。
 - macOS 配置位于 `~/Library/Application Support/BiliVideoTool`；Linux 位于 `$XDG_CONFIG_HOME/BiliVideoTool`（未设置时为 `~/.config/BiliVideoTool`）。成品和下载默认保存在解压目录；目录不可写时使用用户配置目录中的 `files`。
 
 各平台验证范围见源码中的 `docs/STAGE_E_PLATFORM_VALIDATION.md`。Windows 既有版验收不能代替新平台验收。
@@ -113,5 +113,7 @@ A/B 旧版留下的程序旁 `cache` 不属于新缓存管理范围；确认旧�
 维护排查可运行 `BiliVideoTool.exe --self-test 自检结果`，会离线生成样例和报告。另支持 `--no-browser`、`--port`、`--data-dir`；保存过的自定义目录优先于 `--data-dir` 的默认目录。`BILI_CONFIG_HOME` 可指定独立配置目录，用于测试或多个隔离实例。
 
 源码采用 MIT，见 `LICENSE`。依赖版本、来源和许可见 `THIRD_PARTY_NOTICES.txt`；ffprobe 的许可、构建来源与校验值在 `_internal/vendor/ffprobe`。
+
+`_internal/vendor/ffprobe/source.json` 中，`binary_sha256` 对应本包实际交付的 ffprobe 文件；`sha256_before_freeze` 对应打包输入文件。macOS 打包时会改写并重新签名二进制，两个值可能不同；核对本包时请使用 `binary_sha256`。完整压缩包的 SHA256 位于压缩包旁边的 `.sha256` 文件。
 
 v1.0 候选版已获用户两台电脑的实测确认。当前 v1.1 D 阶段试用版新增批量、拼接、音频和方案功能，其验证结果见源码中的 `docs/STAGE_D_VALIDATION.md`；本版用户试用与公开发布另行记录。
