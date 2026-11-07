@@ -15,9 +15,22 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "scripts")]
 from modules import runtime, desktop, tasks
 from portable_archive import create_archive, extract_archive, write_launcher
+import prepare_ffprobe
 
 
 class PlatformPackaging(unittest.TestCase):
+    def test_source_mirrors_reject_wrong_hash_before_fallback(self):
+        import hashlib
+        good = b"verified source"
+        with tempfile.TemporaryDirectory() as temp:
+            archive = Path(temp) / "source.tar.xz"
+            with patch.object(prepare_ffprobe, "SOURCE_SHA256", hashlib.sha256(good).hexdigest()), \
+                    patch.object(prepare_ffprobe.urllib.request, "urlopen", side_effect=[
+                        OSError("offline"), io.BytesIO(b"corrupt"), io.BytesIO(good)]):
+                prepare_ffprobe.download_source(archive)
+            self.assertEqual(archive.read_bytes(), good)
+            self.assertFalse(archive.with_suffix(".part").exists())
+
     def test_macos_config_and_explicit_override(self):
         home = Path.home()
         with patch.dict(os.environ, {}, clear=True), patch.object(sys, "platform", "darwin"), \

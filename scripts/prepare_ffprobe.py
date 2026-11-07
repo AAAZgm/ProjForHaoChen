@@ -18,6 +18,26 @@ URL = "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build
 SHA256 = "db580001caa24ac104c8cb856cd113a87b0a443f7bdf47d8c12b1d740584a2ec"
 SOURCE_URL = f"https://www.ffmpeg.org/releases/ffmpeg-{VERSION}.tar.xz"
 SOURCE_SHA256 = "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c"
+SOURCE_MIRRORS = [SOURCE_URL, f"https://ffmpeg.org/releases/ffmpeg-{VERSION}.tar.xz",
+                  f"https://distfiles.macports.org/ffmpeg/ffmpeg-{VERSION}.tar.xz"]
+
+
+def download_source(archive):
+    partial = archive.with_suffix(".part")
+    for url in SOURCE_MIRRORS:
+        try:
+            print(f"Downloading FFmpeg source: {url}", flush=True)
+            with urllib.request.urlopen(url, timeout=30) as response, partial.open("wb") as output:
+                shutil.copyfileobj(response, output)
+            if digest(partial) != SOURCE_SHA256:
+                raise ValueError("FFmpeg source checksum mismatch")
+            partial.replace(archive)
+            return
+        except (OSError, ValueError) as error:
+            print(f"Source unavailable or invalid: {type(error).__name__}; trying next verified mirror", flush=True)
+        finally:
+            partial.unlink(missing_ok=True)
+    raise RuntimeError("No mirror supplied the pinned FFmpeg source archive")
 
 
 def prepare_posix():
@@ -36,15 +56,7 @@ def prepare_posix():
     cache.mkdir(parents=True, exist_ok=True)
     archive = cache / f"ffmpeg-{VERSION}.tar.xz"
     if not archive.is_file() or digest(archive) != SOURCE_SHA256:
-        partial = archive.with_suffix(".part")
-        try:
-            with urllib.request.urlopen(SOURCE_URL, timeout=90) as response, partial.open("wb") as output:
-                shutil.copyfileobj(response, output)
-            if digest(partial) != SOURCE_SHA256:
-                raise RuntimeError("FFmpeg source checksum mismatch")
-            partial.replace(archive)
-        finally:
-            partial.unlink(missing_ok=True)
+        download_source(archive)
     work = Path(tempfile.mkdtemp(prefix=f"build-{target}-", dir=cache))
     with tarfile.open(archive, "r:xz") as source:
         source.extractall(work, filter="data")

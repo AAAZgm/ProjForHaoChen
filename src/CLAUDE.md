@@ -23,11 +23,11 @@ python -m unittest discover -s tests -v
 python scripts/build_portable.py
 ```
 
-- 打包配置在 `src/bili_video_tool.spec`；仓库根目录 `.github/workflows/build-exe.yml` 提供 Windows 构建。目录式便携 ZIP 位于根目录 `dist/`。
+- 打包配置在 `src/bili_video_tool.spec`；`.github/workflows/build-exe.yml` 提供 Windows 构建，`build-posix.yml` 提供 macOS arm64/x64、Linux x64 原生构建。Windows 输出 ZIP，POSIX 输出保留执行权限和符号链接的 tar.gz，均位于根目录 `dist/`；不得在 Windows 上交叉打包冒充原生包。
 - 使用标准库 unittest。测试覆盖输入、UI 回调与真实 FFmpeg 生成/处理的素材；打包后还需验证解压产物的本地服务、上传、处理、下载。
 - 运行和构建依赖分别锁定在 `requirements.txt`、`requirements-build.txt`；升级直接依赖时从 `.in` 重新解析并验证。
 - ffmpeg 通过 `imageio-ffmpeg` 自带二进制,用户无需安装。
-- ffprobe 8.1.2 通过 `scripts/prepare_ffprobe.py` 固定来源并校验 SHA256；随包放在 `_internal/vendor/ffprobe`，媒体信息只解析 JSON。
+- ffprobe 8.1.2 通过 `scripts/prepare_ffprobe.py` 固定来源并校验 SHA256；Windows 取固定预编译包，macOS/Linux 从官方源码本机构建，不依赖用户安装的 ffprobe。随包放在 `_internal/vendor/ffprobe`，媒体信息只解析 JSON。
 
 ## 架构与数据流
 
