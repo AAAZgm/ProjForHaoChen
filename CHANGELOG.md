@@ -1,6 +1,6 @@
 # 版本记录
 
-## 1.2.0-beta.1 · 开发中
+## 1.2.0-beta.1 · 2026-11-07 跨平台候选（未公开发布）
 
 - 增加 macOS Apple Silicon / Intel 与 Linux x64 原生构建；随包包含从固定、校验过的 FFmpeg 源码构建的 ffprobe。
 - macOS/Linux 采用保留执行权限及符号链接的 tar.gz，提供启动脚本；构建后验证实际解压产物。
