@@ -28,7 +28,7 @@ Windows：安装 Python 3.10+（推荐已验证的 3.12），依次双击 `src/i
 
 Linux/macOS：安装 Python 3.12、C 编译器和 make，然后运行 `bash src/install.sh`、`bash src/start.sh`。安装时构建固定版本 ffprobe；发行包用户无需编译或安装依赖。
 
-macOS/Linux 的 `1.2.0-beta.1` 候选发行包已生成并通过[原生构建与解压验证](https://github.com/AAAZgm/ProjForHaoChen/actions/runs/42358189222)，范围为 macOS 15 Apple Silicon / Intel 与 Ubuntu 22.04 x64 基线。本地交付位于 `dist/`；当前未公开发布新 Release。原生构建流程见 `.github/workflows/build-posix.yml`，本机构建可运行 `bash src/build.sh`。输出为 tar.gz、SHA256 和验证报告，使用方法见 [便携版说明](docs/PORTABLE_README.md)，实际结果与未覆盖范围见 [平台验证记录](docs/STAGE_E_PLATFORM_VALIDATION.md)。
+macOS/Linux 最新候选为 `1.2.0-beta.2`，已通过[原生构建、审计与解压验证](https://github.com/AAAZgm/ProjForHaoChen/actions/runs/42382325936)，范围为最低 macOS 15.0 Apple Silicon / Intel 与 Ubuntu 22.04 x64 基线。本版补上旧 macOS 启动提示，并修正 ffprobe 最终文件的校验清单。本地交付位于 `dist/`；当前未公开发布新 Release。原生构建流程见 `.github/workflows/build-posix.yml`，本机构建可运行 `bash src/build.sh`。输出为 tar.gz、SHA256 和验证报告，使用方法见 [便携版说明](docs/PORTABLE_README.md)，实际结果与未覆盖范围见 [beta.2 验证记录](docs/STAGE_E_BETA2_VALIDATION.md)。
 
 ## 开发与构建
 
