@@ -26,7 +26,9 @@ rc.4 修复部分 Windows 启动环境中导出进程自动降档导致的性能
 
 Windows：安装 Python 3.10+（推荐已验证的 3.12），依次双击 `src/install.bat`、`src/start.bat`。安装脚本创建 `src/.venv`、安装锁定依赖，并下载及校验固定版本的 ffprobe。
 
-Linux/macOS：自行安装包含 ffprobe 的 FFmpeg，再运行 `src/install.sh`、`src/start.sh`。目前仅提供 Windows 发行包；其他平台尚未验收。
+Linux/macOS：安装 Python 3.12、C 编译器和 make，然后运行 `bash src/install.sh`、`bash src/start.sh`。安装时构建固定版本 ffprobe；发行包用户无需编译或安装依赖。
+
+macOS/Linux 的 `1.2.0-beta.1` 发行包正在准备，范围为 macOS 15 Apple Silicon / Intel 与 Ubuntu 22.04 x64 基线。原生构建流程见 `.github/workflows/build-posix.yml`，本机构建可运行 `bash src/build.sh`。输出为 tar.gz、SHA256 和验证报告，使用方法见 [便携版说明](docs/PORTABLE_README.md)，实际结果见 [平台验证记录](docs/STAGE_E_PLATFORM_VALIDATION.md)。
 
 ## 开发与构建
 

@@ -10,7 +10,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -18,6 +17,7 @@ from modules.runtime import APP_VERSION
 from modules.ffmpeg_util import get_ffmpeg_exe
 from smoke_portable import smoke_portable
 from prepare_ffprobe import prepare as prepare_ffprobe
+from portable_archive import create_archive, extract_archive, write_launcher
 
 
 def third_party_notices(bundle: Path) -> None:
@@ -30,7 +30,7 @@ def third_party_notices(bundle: Path) -> None:
     result = subprocess.run([get_ffmpeg_exe(), "-L"], capture_output=True, check=True)
     lines.append((result.stdout + result.stderr).decode("utf-8", errors="replace"))
     lines.append("Full dependency license files are retained in _internal package metadata where supplied.")
-    lines += ["", "ffprobe 8.1.2: https://www.gyan.dev/ffmpeg/builds/", 
+    lines += ["", "ffprobe 8.1.2: https://ffmpeg.org/ (Windows binaries: https://www.gyan.dev/ffmpeg/builds/)",
               "Build source, license and checksum: _internal/vendor/ffprobe/README.txt, LICENSE.txt, source.json.",
               "Project source is MIT licensed; dependency licenses apply to their respective components."]
     (bundle / "THIRD_PARTY_NOTICES.txt").write_text("\n".join(lines), encoding="utf-8")
@@ -66,21 +66,22 @@ def main() -> None:
     for document in ("LICENSE", "CHANGELOG.md"):
         shutil.copy2(ROOT / document, bundle / document)
     third_party_notices(bundle)
+    windows = os.name == "nt"
+    if not windows:
+        write_launcher(bundle, sys.platform == "darwin")
     arch = "x64" if platform.machine().lower() in ("amd64", "x86_64") else platform.machine().lower()
-    name = f"bili-video-tool-{APP_VERSION}-{platform.system().lower()}-{arch}"
+    system = "macos" if sys.platform == "darwin" else platform.system().lower()
+    name = f"bili-video-tool-{APP_VERSION}-{system}-{arch}"
     # A failed smoke check must not leave a final-named release zip behind.
-    candidate = build / f"{name}.candidate.zip"
-    with zipfile.ZipFile(candidate, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-        for file in sorted(bundle.rglob("*")):
-            if file.is_file():
-                archive.write(file, file.relative_to(dist))
+    extension = ".zip" if windows else ".tar.gz"
+    candidate = build / f"{name}.candidate{extension}"
+    create_archive(bundle, candidate, windows)
     check_dir = Path(tempfile.mkdtemp(prefix="portable-中文 ", dir=build))
-    with zipfile.ZipFile(candidate) as archive:
-        archive.extractall(check_dir)
+    extract_archive(candidate, check_dir, windows)
     executable = check_dir / "BiliVideoTool" / ("BiliVideoTool.exe" if os.name == "nt" else "BiliVideoTool")
     print("Verifying extracted zip with system-only PATH...", flush=True)
     report = smoke_portable(executable, check_dir / "verification")
-    final_zip = dist / f"{name}.zip"
+    final_zip = dist / f"{name}{extension}"
     candidate.replace(final_zip)
     digest = hashlib.sha256()
     with final_zip.open("rb") as stream:
@@ -88,7 +89,10 @@ def main() -> None:
             digest.update(block)
     checksum = digest.hexdigest()
     (dist / f"{name}.sha256").write_text(f"{checksum}  {final_zip.name}\n", encoding="ascii")
-    report.update(archive=final_zip.name, sha256=checksum, bytes=final_zip.stat().st_size)
+    report.update(archive=final_zip.name, sha256=checksum, bytes=final_zip.stat().st_size,
+                  platform=platform.platform(), architecture=platform.machine(),
+                  python=platform.python_version(), source_commit=os.environ.get("GITHUB_SHA"),
+                  desktop_validation="pending: headless API verification only")
     (dist / f"{name}-verification.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"status": report["status"], "archive": str(final_zip), "bytes": report["bytes"],
                       "sha256": checksum}, ensure_ascii=False, indent=2), flush=True)

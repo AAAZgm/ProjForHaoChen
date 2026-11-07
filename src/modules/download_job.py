@@ -43,7 +43,9 @@ def download(url, directory, height=0, progress=None, _operation="download"):
         command += ["--download-worker", str(request)]
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    encoding="utf-8", errors="replace",
+                                   start_new_session=os.name != "nt",
                                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+        process._bili_process_group = os.name != "nt"
         last = 0
         try:
             with tasks.watch_process(process, tree=True):

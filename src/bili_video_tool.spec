@@ -2,14 +2,16 @@
 """Portable onedir bundle; build from a clean, locked project environment."""
 
 from pathlib import Path
+import os
 from PyInstaller.utils.hooks import collect_all, collect_data_files, copy_metadata
 
 source = Path(SPECPATH)
 datas, binaries, hiddenimports = [], [], []
 probe = source / "vendor" / "ffprobe"
-if not (probe / "ffprobe.exe").is_file():
+probe_binary = probe / ("ffprobe.exe" if os.name == "nt" else "ffprobe")
+if not probe_binary.is_file():
     raise RuntimeError("Run scripts/prepare_ffprobe.py before building")
-binaries.append((str(probe / "ffprobe.exe"), "vendor/ffprobe"))
+binaries.append((str(probe_binary), "vendor/ffprobe"))
 datas.extend((str(probe / name), "vendor/ffprobe") for name in ("LICENSE.txt", "README.txt", "source.json"))
 
 # These packages load assets/extractors by path or dynamic import.

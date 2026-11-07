@@ -100,6 +100,5 @@ def open_local(path, folder=False):
     if os.name == "nt":
         os.startfile(str(path))
     else:
-        import sys
-        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path)],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        from .desktop import open_target
+        open_target(path)

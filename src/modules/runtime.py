@@ -6,7 +6,7 @@ import sys
 import tempfile
 import uuid
 
-APP_VERSION = "1.1.0-beta.1"
+APP_VERSION = "1.2.0-beta.1"
 RELEASES_URL = "https://github.com/AAAZgm/ProjForHaoChen/releases"
 _run_id = uuid.uuid4().hex
 
@@ -35,7 +35,13 @@ def config_dir() -> Path:
     override = os.environ.get("BILI_CONFIG_HOME")
     if override:
         return Path(override).expanduser().resolve()
-    base = Path(os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    if sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
+    elif os.name == "nt":
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    else:
+        xdg = os.environ.get("XDG_CONFIG_HOME", "")
+        base = Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".config"
     return base / "BiliVideoTool"
 
 

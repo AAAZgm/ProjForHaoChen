@@ -4,6 +4,7 @@ from ctypes import wintypes
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -104,7 +105,14 @@ class AppWindow:
                     return "已打开轻剪独立窗口；点击“退出程序”会同时关闭窗口和后台"
                 except OSError as error:
                     diagnostics.LOG.warning("App window unavailable: %s", error)
-            webbrowser.open(url)
+            if os.name != "nt" and getattr(sys, "frozen", False):
+                from .desktop import open_target
+                try:
+                    open_target(url)
+                except OSError:
+                    diagnostics.LOG.warning("无法打开默认浏览器，请手动访问 %s", url)
+            else:
+                webbrowser.open(url)
             return "已使用默认浏览器打开；退出后若标签页未自动关闭，请手动关闭"
 
     def close(self):

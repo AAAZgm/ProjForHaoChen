@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 from contextvars import ContextVar
 import os
+import signal
 import subprocess
 import threading
 
@@ -87,6 +88,15 @@ def task(session_id, progress=None):
 
 
 def stop_process(process, tree=False):
+    # Only downloader workers explicitly launched in a new session own a group.
+    # Kill the group even if its leader has exited but left a merging child alive.
+    if tree and os.name != "nt" and getattr(process, "_bili_process_group", False):
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        return
     if process.poll() is not None:
         return
     if tree and os.name == "nt":
